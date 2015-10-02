@@ -1,0 +1,12 @@
+{
+	"RedisHost": "127.0.0.1", 
+	"RedisPort": 6379,
+	"PostgresHost": "127.0.0.1",
+	"PostgresPort": 5432,
+	"PostgresDb": "data_competition_dev",
+	"PostgresUser": "dc",
+	"PostgresPassword": "dc",
+	"TruthRoot": "/var/www/dc/truth",
+	"SubmissionRoot": "/var/www/dc/submission"
+
+}
