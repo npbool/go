@@ -1,47 +1,41 @@
 package scoring
 
 import (
-	"fmt"
-	"strconv"
-	"os"
-	"io"
-	"path"
-	"log"
+	"database/sql"
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"path"
+	"strconv"
+
 	"github.com/garyburd/redigo/redis"
-	"database/sql"
 	_ "github.com/lib/pq"
 )
 
-
-type Truth map[string]int;
+type Truth map[string]int
 type Competition struct {
 	Public, Private Truth
 }
 
-type Submission struct {
-	Pk int
-	CompetitionPk int
-	Path string
-}
-
 type Result struct {
 	SubmissionPk int
-	Message string
-	PublicScore float32
+	Message      string
+	PublicScore  float32
 	PrivateScore float32
 }
 
 type Daemon struct {
-	config Config
-	competitionTruths map[int]Competition	
-	postgresConn *sql.DB
-	redisConn redis.Conn
+	config            Config
+	competitionTruths map[int]Competition
+	postgresConn      *sql.DB
+	redisConn         redis.Conn
 }
 
 func (daemon *Daemon) connDb() {
-	connStr := fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", 
+	connStr := fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable",
 		daemon.config.PostgresUser, daemon.config.PostgresPassword, daemon.config.PostgresDb)
 
 	fmt.Println(connStr)
@@ -62,7 +56,7 @@ func (daemon *Daemon) connRedis() {
 	}
 }
 
-func readTruth(path string) Truth{
+func readTruth(path string) Truth {
 	file, err := os.Open(path)
 	if err != nil {
 		log.Fatal(err)
@@ -90,30 +84,30 @@ func readTruth(path string) Truth{
 	return res
 }
 
-func (daemon *Daemon) loadCompetitionData() {	
+func (daemon *Daemon) loadCompetitionData() {
 	rows, err := daemon.postgresConn.Query("SELECT id, public_truth, private_truth from competition_competition")
+	defer rows.Close()
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	daemon.competitionTruths = map[int]Competition{}
 	for rows.Next() {
-		var compId int
+		var compID int
 		var publicPath, privatePath string
-		if err := rows.Scan(&compId, &publicPath, &privatePath); err != nil {
+		if err := rows.Scan(&compID, &publicPath, &privatePath); err != nil {
 			log.Fatal(err)
 		}
 
-		daemon.competitionTruths[compId] = Competition {
+		daemon.competitionTruths[compID] = Competition{
 			readTruth(path.Join(daemon.config.TruthRoot, publicPath)),
 			readTruth(path.Join(daemon.config.TruthRoot, privatePath)),
 		}
 	}
 
-	defer rows.Close()	
 }
 
-func (daemon *Daemon) Init(config Config){
+func (daemon *Daemon) Init(config Config) {
 	daemon.config = config
 	daemon.connDb()
 	daemon.connRedis()
@@ -125,16 +119,16 @@ func (daemon *Daemon) Cleanup() {
 	daemon.redisConn.Close()
 }
 
-func (daemon *Daemon) Run(numWorker int){
+func (daemon *Daemon) Run() {
 	queue := make(chan Submission)
-	for i:=0; i<numWorker; i+=1 {
+	for i := 0; i < daemon.config.Worker; i += 1 {
 		go daemon.work(queue)
 	}
 
 	for {
-		submissionJson ,_ := redis.Bytes(daemon.redisConn.Do("LPOP", "submission_queue"))
+		submissionJson, _ := redis.Bytes(daemon.redisConn.Do("LPOP", "submission_queue"))
 		if submissionJson == nil {
-			continue;
+			continue
 		}
 		var submission Submission
 		err := json.Unmarshal(submissionJson, &submission)
@@ -145,59 +139,20 @@ func (daemon *Daemon) Run(numWorker int){
 		}
 	}
 }
-func Start(configFilename string, numWorker int){
+func Start(configFilename string) {
 	config, err := LoadConfig(configFilename)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
 	}
 
-	daemon := Daemon {}
+	daemon := Daemon{}
 	daemon.Init(config)
 	defer daemon.Cleanup()
-
-	daemon.Run(4)
+	daemon.Run()
 }
 
-func readSubmission(path string) (map[string]float32, string) {
-	file, err := os.Open(path)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	res := map[string]float32{}
-	reader := csv.NewReader(file)
-	msg := ""
-	for {
-		record, err := reader.Read()
-		if err==io.EOF {
-			break
-		}
-		if err!=nil {
-			msg = "Format error" 
-			break
-		}
-		if len(record) != 2{
-			msg = "Wrong column numbers"
-			break
-		}
-		key := record[0]
-		pred, err := strconv.ParseFloat(record[1], 32)
-		if err!=nil {
-			msg = "Format error" 
-			break
-		}
-		if pred>1 || pred<0 {
-			msg = "Prediction out of range"
-			break
-		}
-		res[key] = float32(pred)
-	}
-
-	return res, msg 
-}
-
-func evaluate(truth Truth, predication map[string]float32) float32{
+func evaluate(truth Truth, predication map[string]float32) float32 {
 	return AUC(truth, predication)
 }
 
@@ -214,24 +169,24 @@ func (daemon *Daemon) writeMsg(submissionPk int, msg string) {
 func (daemon *Daemon) writeScore(submissionPk int, publicScore, privateScore float32) {
 	log.Printf("Sub %d: %f %f\n", submissionPk, publicScore, privateScore)
 	_, err := daemon.postgresConn.Exec(`UPDATE competition_submission
-							SET public_score=$1, private_score=$2, status=2, message="Success"
-							WHERE id=$3`, 
-							publicScore, privateScore, submissionPk)
+							SET public_score=$1, private_score=$2, status=2, message=$3
+							WHERE id=$4`,
+		publicScore, privateScore, "Success", submissionPk)
 	if err != nil {
 		log.Println(err.Error())
 	}
 }
 
-func (daemon *Daemon) work(queue chan Submission){
-	fmt.Println("worker")	
+func (daemon *Daemon) work(queue chan Submission) {
+	fmt.Println("worker")
 
 	for {
-		submission := <- queue
-		log.Printf("Get sub %d\n", submission.Pk)
-		predication, msg := readSubmission(submission.Path)
+		submission := <-queue
+		predication, err := submission.ReadData()
 
-		if msg != "" {
-			daemon.writeMsg(submission.Pk, msg)
+		if err != nil {
+			fmt.Println(err.Error())
+			daemon.writeMsg(submission.Pk, err.Error())
 			continue
 		}
 
@@ -239,10 +194,10 @@ func (daemon *Daemon) work(queue chan Submission){
 		publicScore = evaluate(daemon.competitionTruths[submission.CompetitionPk].Public, predication)
 		privateScore = evaluate(daemon.competitionTruths[submission.CompetitionPk].Private, predication)
 
-		if msg != "" {
-			daemon.writeMsg(submission.Pk, msg)
-			continue
-		}
+		// if msg != "" {
+		// 	daemon.writeMsg(submission.Pk, msg)
+		// 	continue
+		// }
 
 		daemon.writeScore(submission.Pk, publicScore, privateScore)
 	}

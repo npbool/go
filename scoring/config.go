@@ -1,4 +1,4 @@
-package scoring 
+package scoring
 
 import (
 	"encoding/json"
@@ -6,15 +6,16 @@ import (
 )
 
 type Config struct {
-	RedisHost, PostgresHost string
-	RedisPort, PostgresPort int
+	RedisHost, PostgresHost                    string
+	RedisPort, PostgresPort                    int
 	PostgresDb, PostgresUser, PostgresPassword string
-	TruthRoot, SubmissionRoot string
+	TruthRoot, SubmissionRoot                  string
+	Worker                                     int
 }
 
 func LoadConfig(fn string) (Config, error) {
 	file, err := os.Open(fn)
-	if err!=nil {
+	if err != nil {
 		return Config{}, err
 	}
 	decoder := json.NewDecoder(file)
