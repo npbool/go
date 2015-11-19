@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"time"
 
 	"github.com/garyburd/redigo/redis"
 	_ "github.com/lib/pq"
@@ -18,6 +19,7 @@ import (
 type Truth map[string]int
 type Competition struct {
 	Public, Private Truth
+	NumLine         int
 }
 
 type Result struct {
@@ -85,7 +87,7 @@ func readTruth(path string) Truth {
 }
 
 func (daemon *Daemon) loadCompetitionData() {
-	rows, err := daemon.postgresConn.Query("SELECT id, public_truth, private_truth from competition_competition")
+	rows, err := daemon.postgresConn.Query("SELECT id, public_truth, private_truth, num_line from competition_competition")
 	defer rows.Close()
 	if err != nil {
 		log.Fatal(err)
@@ -95,13 +97,15 @@ func (daemon *Daemon) loadCompetitionData() {
 	for rows.Next() {
 		var compID int
 		var publicPath, privatePath string
-		if err := rows.Scan(&compID, &publicPath, &privatePath); err != nil {
+		var numLine int
+		if err := rows.Scan(&compID, &publicPath, &privatePath, &numLine); err != nil {
 			log.Fatal(err)
 		}
 
 		daemon.competitionTruths[compID] = Competition{
 			readTruth(path.Join(daemon.config.TruthRoot, publicPath)),
 			readTruth(path.Join(daemon.config.TruthRoot, privatePath)),
+			numLine,
 		}
 	}
 
@@ -134,6 +138,7 @@ func (daemon *Daemon) Run() {
 		err := json.Unmarshal(submissionJson, &submission)
 		if err != nil {
 			fmt.Println(err.Error())
+			time.Sleep(1000 * time.Millisecond)
 		} else {
 			queue <- submission
 		}
@@ -189,15 +194,14 @@ func (daemon *Daemon) work(queue chan Submission) {
 			daemon.writeMsg(submission.Pk, err.Error())
 			continue
 		}
+		if len(predication) != daemon.competitionTruths[submission.CompetitionPk].NumLine {
+			fmt.Println("Line number doesn't match")
+			daemon.writeMsg(submission.Pk, "Line number doesn't match")
+		}
 
 		var publicScore, privateScore float32
 		publicScore = evaluate(daemon.competitionTruths[submission.CompetitionPk].Public, predication)
 		privateScore = evaluate(daemon.competitionTruths[submission.CompetitionPk].Private, predication)
-
-		// if msg != "" {
-		// 	daemon.writeMsg(submission.Pk, msg)
-		// 	continue
-		// }
 
 		daemon.writeScore(submission.Pk, publicScore, privateScore)
 	}
