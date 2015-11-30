@@ -87,7 +87,9 @@ func readTruth(path string) Truth {
 }
 
 func (daemon *Daemon) loadCompetitionData() {
-	rows, err := daemon.postgresConn.Query("SELECT id, public_truth, private_truth, num_line from competition_competition")
+	rows, err := daemon.postgresConn.Query(
+        "SELECT c.id, c.public_truth, c.private_truth, c.num_line FROM competition_competition c"
+        + "WHERE c.allow_overdue_submission=true or now()<c.end_datetime")
 	defer rows.Close()
 	if err != nil {
 		log.Fatal(err)
