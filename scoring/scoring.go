@@ -88,8 +88,7 @@ func readTruth(path string) Truth {
 
 func (daemon *Daemon) loadCompetitionData() {
 	rows, err := daemon.postgresConn.Query(
-        "SELECT c.id, c.public_truth, c.private_truth, c.num_line FROM competition_competition c"
-        + "WHERE c.allow_overdue_submission=true or now()<c.end_datetime")
+        "SELECT c.id, c.public_truth, c.private_truth, c.num_line FROM competition_competition c WHERE c.allow_overdue_submission=true or now()<c.end_datetime")
 	defer rows.Close()
 	if err != nil {
 		log.Fatal(err)
@@ -204,7 +203,7 @@ func (daemon *Daemon) work(queue chan Submission) {
 		var publicScore, privateScore float32
 		publicScore = evaluate(daemon.competitionTruths[submission.CompetitionPk].Public, predication)
 		privateScore = evaluate(daemon.competitionTruths[submission.CompetitionPk].Private, predication)
-
+		fmt.Println(publicScore)
 		daemon.writeScore(submission.Pk, publicScore, privateScore)
 	}
 }
