@@ -22,15 +22,15 @@ func (ins IList) Less(i, j int) bool {
 	return ins[i].score >= ins[j].score
 }
 
-func AUC(truth Truth, pred map[string]float32) float32 {
-	ins := make(IList, len(truth))
+func AUC(truth Truth, pred Prediction) float32 {
+	ins := make(IList, len(truth.classification_truth))
 	i := 0
 	numPos := 0
 	numNeg := 0
-	for k, _ := range truth {
-		ins[i] = Instance{truth[k], pred[k]}
+	for k, _ := range truth.classification_truth {
+		ins[i] = Instance{truth.classification_truth[k], pred.classification_prediction[k]}
 		i++
-		if truth[k] == 0 {
+		if truth.classification_truth[k] == 0 {
 			numNeg++
 		} else {
 			numPos++
@@ -65,11 +65,11 @@ func AUC(truth Truth, pred map[string]float32) float32 {
 	return float32(auc)
 }
 
-func calculatePara(truth Truth, pred map[string]float32) (int, int, int, int) {
-	ins := make(IList, len(truth))
+func calculatePara(truth Truth, pred Prediction) (int, int, int, int) {
+	ins := make(IList, len(truth.classification_truth))
 	i := 0
-	for k, _ := range truth {
-		ins[i] = Instance{truth[k], pred[k]}
+	for k, _ := range truth.classification_truth {
+		ins[i] = Instance{truth.classification_truth[k], pred.classification_prediction[k]}
 		i++
 	}
 
@@ -105,7 +105,7 @@ func divisorCheck(divisor float32) (error) {
 	return nil
 }
 
-func Recall(truth Truth, pred map[string]float32) float32 {
+func Recall(truth Truth, pred Prediction) float32 {
 	tp, _, _, fn := calculatePara(truth, pred)
 
 	if err := divisorCheck(float32(tp + fn)); err != nil {
@@ -115,7 +115,7 @@ func Recall(truth Truth, pred map[string]float32) float32 {
 	return float32(tp) / float32(tp + fn)
 }
 
-func Precision(truth Truth, pred map[string]float32) float32 {
+func Precision(truth Truth, pred Prediction) float32 {
 	tp, _, fp, _ := calculatePara(truth, pred)
 
 	if err := divisorCheck(float32(tp + fp)); err != nil {
@@ -125,7 +125,7 @@ func Precision(truth Truth, pred map[string]float32) float32 {
 	return float32(tp) / float32(tp + fp)
 }
 
-func F_score(truth Truth, pred map[string]float32) float32 {
+func F_score(truth Truth, pred Prediction) float32 {
 	recall := Recall(truth, pred)
 	precision := Precision(truth, pred)
 
@@ -134,4 +134,9 @@ func F_score(truth Truth, pred map[string]float32) float32 {
 		return 0
 	}
 	return float32(2 * precision * recall) / float32(precision + recall)
+}
+
+func MAP(truth Truth, pred Prediction) float32 {
+	fmt.Println(truth.rank_truth, pred.rank_prediction)
+	return 0.666
 }

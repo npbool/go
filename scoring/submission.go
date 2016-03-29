@@ -10,6 +10,11 @@ import (
 	"strings"
 )
 
+type Prediction struct {
+	classification_prediction map[string]float32
+	rank_prediction           []rank
+}
+
 type Submission struct {
 	Pk            int
 	CompetitionPk int
@@ -89,39 +94,67 @@ func (sub *Submission) Open() (io.ReadCloser, error) {
 	}
 }
 
-func (submission *Submission) ReadData() (map[string]float32, error) {
+func (submission *Submission) ReadData(evaluation int) (Prediction, error) {
 	rc, err := submission.Open()
 	if err != nil {
-		return nil, err
+		return Prediction{}, err
 	}
-	res := map[string]float32{}
+	res := Prediction{}
 	csvReader := csv.NewReader(rc)
+
 	msg := ""
-	for {
-		record, err := csvReader.Read()
-		if err == io.EOF {
-			break
+	if evaluation == 2 {
+		res.classification_prediction = make(map[string]float32)
+		
+		for {
+			record, err := csvReader.Read()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				msg = "Format error"
+				break
+			}
+			if len(record) != 2 {
+				msg = "Wrong column numbers"
+				break
+			}
+			key := record[0]
+			pred, err := strconv.ParseFloat(record[1], 32)
+			if err != nil {
+				msg = "Format error"
+				break
+			}
+			if pred > 1 || pred < 0 {
+				msg = "Prediction out of range"
+				break
+			}
+			res.classification_prediction[key] = float32(pred)
 		}
-		if err != nil {
-			msg = "Format error"
-			break
+	} else if evaluation == 1 {
+		res.rank_prediction = make([]rank, 0)
+
+		for {
+			record, err := csvReader.Read()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				msg = "Format error"
+				break
+			}
+
+			var line rank
+			for j := 0; j < len(record); j++ {
+				num, _ := strconv.Atoi(record[j])
+				line = append(line, num)
+			}
+			res.rank_prediction = append(res.rank_prediction, line)
 		}
-		if len(record) != 2 {
-			msg = "Wrong column numbers"
-			break
-		}
-		key := record[0]
-		pred, err := strconv.ParseFloat(record[1], 32)
-		if err != nil {
-			msg = "Format error"
-			break
-		}
-		if pred > 1 || pred < 0 {
-			msg = "Prediction out of range"
-			break
-		}
-		res[key] = float32(pred)
+	} else {
+		msg = "evaluation method doesn't exist" 
 	}
+	
 	rc.Close()
 	if msg != "" {
 		return res, errors.New(msg)

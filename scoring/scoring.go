@@ -16,10 +16,17 @@ import (
 	_ "github.com/lib/pq"
 )
 
-type Truth map[string]int
+type rank []int
+
+type Truth struct {
+	classification_truth map[string]int
+	rank_truth           []rank
+}
+
 type Competition struct {
 	Public, Private Truth
 	NumLine         int
+	evaluation		int
 }
 
 type Result struct {
@@ -58,37 +65,66 @@ func (daemon *Daemon) connRedis() {
 	}
 }
 
-func readTruth(path string) Truth {
+func readTruth(path string, evaluation int) Truth {
 	file, err := os.Open(path)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	reader := csv.NewReader(file)
 	res := Truth{}
-	for {
-		record, err := reader.Read()
+	reader := csv.NewReader(file)
+	
 
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			log.Fatal(err)
-		}
-		key := record[0]
-		label := record[1]
+	if evaluation == 2 {
+		res.classification_truth = make(map[string]int)
 
-		res[key], err = strconv.Atoi(label)
-		if err != nil {
-			log.Fatal(err)
+		for {
+			record, err := reader.Read()
+
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				log.Fatal(err)
+			}
+			key := record[0]
+			label := record[1]
+
+			res.classification_truth[key], err = strconv.Atoi(label)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
+	} else if evaluation == 1 {
+		res.rank_truth = make([]rank, 0)
+
+		for {
+			record, err := reader.Read()
+
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			var line rank
+			for j := 0; j < len(record); j++ {
+				num, _ := strconv.Atoi(record[j])
+				line = append(line, num)
+			}
+			res.rank_truth = append(res.rank_truth, line)
+		}
+	} else {
+		fmt.Println("evaluation method doesn't exist")
+		os.Exit(3)
 	}
+	
 	return res
 }
 
 func (daemon *Daemon) loadCompetitionData() {
 	rows, err := daemon.postgresConn.Query(
-        "SELECT c.id, c.public_truth, c.private_truth, c.num_line FROM competition_competition c WHERE c.allow_overdue_submission=true or now()<c.end_datetime")
+        "SELECT c.id, c.public_truth, c.private_truth, c.num_line, c.evaluation FROM competition_competition c WHERE c.allow_overdue_submission=true or now()<c.end_datetime")
 	defer rows.Close()
 	if err != nil {
 		log.Fatal(err)
@@ -99,14 +135,16 @@ func (daemon *Daemon) loadCompetitionData() {
 		var compID int
 		var publicPath, privatePath string
 		var numLine int
-		if err := rows.Scan(&compID, &publicPath, &privatePath, &numLine); err != nil {
+		var evaluation int
+		if err := rows.Scan(&compID, &publicPath, &privatePath, &numLine, &evaluation); err != nil {
 			log.Fatal(err)
 		}
 
 		daemon.competitionTruths[compID] = Competition{
-			readTruth(path.Join(daemon.config.TruthRoot, publicPath)),
-			readTruth(path.Join(daemon.config.TruthRoot, privatePath)),
+			readTruth(path.Join(daemon.config.TruthRoot, publicPath), evaluation),
+			readTruth(path.Join(daemon.config.TruthRoot, privatePath), evaluation),
 			numLine,
+			evaluation,
 		}
 	}
 
@@ -158,8 +196,8 @@ func Start(configFilename string) {
 	daemon.Run()
 }
 
-func evaluate(truth Truth, predication map[string]float32) float32 {
-	return AUC(truth, predication)
+func evaluate(truth Truth, predication Prediction) float32 {
+	return MAP(truth, predication)
 }
 
 func (daemon *Daemon) writeMsg(submissionPk int, msg string) {
@@ -188,18 +226,27 @@ func (daemon *Daemon) work(queue chan Submission) {
 
 	for {
 		submission := <-queue
-		predication, err := submission.ReadData()
+		evaluation_method := daemon.competitionTruths[submission.CompetitionPk].evaluation
+		predication, err := submission.ReadData(evaluation_method)
 
 		if err != nil {
 			fmt.Println(err.Error())
 			daemon.writeMsg(submission.Pk, err.Error())
 			continue
 		}
-		if len(predication) != daemon.competitionTruths[submission.CompetitionPk].NumLine {
-			fmt.Println("Line number doesn't match")
-			daemon.writeMsg(submission.Pk, "Line number doesn't match")
-		}
 
+		if evaluation_method == 2 {
+			if len(predication.classification_prediction) != daemon.competitionTruths[submission.CompetitionPk].NumLine {
+				fmt.Println("Line number doesn't match")
+				daemon.writeMsg(submission.Pk, "Line number doesn't match")
+			}
+		}
+		if evaluation_method == 1 {
+			if len(predication.rank_prediction) != daemon.competitionTruths[submission.CompetitionPk].NumLine {
+				fmt.Println("Line number doesn't match")
+				daemon.writeMsg(submission.Pk, "Line number doesn't match")
+			}
+		}	
 		var publicScore, privateScore float32
 		publicScore = evaluate(daemon.competitionTruths[submission.CompetitionPk].Public, predication)
 		privateScore = evaluate(daemon.competitionTruths[submission.CompetitionPk].Private, predication)
