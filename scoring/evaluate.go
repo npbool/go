@@ -3,6 +3,7 @@ package scoring
 import (
 	"sort"
 	"fmt"
+	"math"
 )
 
 type Instance struct {
@@ -174,5 +175,46 @@ func MAP(truth Truth, pred Prediction) float32 {
 		}
 		sum += float32(score) / float32(len(truth.rank_truth[i]))
 	}
-	return float32(sum) / float32(len(truth.rank_truth))
+	return sum / float32(len(truth.rank_truth))
+}
+
+func DCG(truth_rank, pred_rank rank) float32 {
+	k := len(pred_rank)
+	pre_pred_rank := make([]int, k)
+	
+	for i := 0; i < k; {
+		pre_pred_rank[i] = pred_rank[k - i - 1]
+		i++
+	}
+	// fmt.Println(pred_rank, pre_pred_rank)
+
+	sum := float64(0)
+	rels := make([]int, k)
+	gains := make([]float64, k)
+	discounts := make([]float64, k)
+	for i := 0; i < k; {
+		rels[i] = truth_rank[pre_pred_rank[i]]
+		gains[i] = math.Pow(float64(2), float64(rels[i])) - float64(1)
+		discounts[i] = math.Log2(float64(i + 2))
+		sum += gains[i] / discounts[i]
+		i++
+	}
+	// fmt.Println(rels, gains, discounts, sum)
+	return float32(sum)
+}
+
+func NDCG(truth Truth, pred Prediction) float32 {
+	if len(truth.rank_truth) == 0 {
+		return 0
+	}
+	sum := float32(0)
+	num_line := len(truth.rank_truth)
+
+	for i := 0; i < num_line; i++ {
+		// fmt.Println(truth.rank_truth[i], pred.rank_prediction[i])
+		actual_score := DCG(truth.rank_truth[i], pred.rank_prediction[i])
+		best_score := DCG(truth.rank_truth[i], truth.rank_truth[i])
+		sum += float32(actual_score) / float32(best_score)
+	}
+	return sum / float32(len(truth.rank_truth))
 }

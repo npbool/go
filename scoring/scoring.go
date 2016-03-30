@@ -197,7 +197,7 @@ func Start(configFilename string) {
 }
 
 func evaluate(truth Truth, predication Prediction) float32 {
-	return MAP(truth, predication)
+	return NDCG(truth, predication)
 }
 
 func (daemon *Daemon) writeMsg(submissionPk int, msg string) {
@@ -249,7 +249,7 @@ func (daemon *Daemon) work(queue chan Submission) {
 		}	
 		var publicScore, privateScore float32
 		publicScore = evaluate(daemon.competitionTruths[submission.CompetitionPk].Public, predication)
-		privateScore = evaluate(daemon.competitionTruths[submission.CompetitionPk].Private, predication)
+		privateScore = 1.0
 		fmt.Println(publicScore)
 		daemon.writeScore(submission.Pk, publicScore, privateScore)
 	}
