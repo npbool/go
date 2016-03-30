@@ -137,6 +137,42 @@ func F_score(truth Truth, pred Prediction) float32 {
 }
 
 func MAP(truth Truth, pred Prediction) float32 {
-	fmt.Println(truth.rank_truth, pred.rank_prediction)
-	return 0.666
+	if len(truth.rank_truth) == 0 {
+		return 0
+	}
+	sum := float32(0)
+	num_line := len(truth.rank_truth)
+
+	for i := 0; i < num_line; i++ {
+		if len(truth.rank_truth[i]) == 0 {
+			continue
+		}
+
+		score := float32(0)
+		num_hits := float32(0)
+
+		for pred_index, pred_value := range pred.rank_prediction[i] {
+			flag1 := 0
+			for _, truth_value := range truth.rank_truth[i] {
+				if truth_value == pred_value {
+					flag1 = 1
+					break
+				}
+			}
+			flag2 := 0
+			for _, pre_pred_value := range pred.rank_prediction[i][:pred_index] {
+				if pre_pred_value == pred_value {
+					flag2 = 1
+					break
+				}
+			}
+
+			if flag1 == 1 && flag2 == 0 {
+				num_hits += 1
+				score += float32(num_hits) / float32(pred_index+1)
+			}
+		}
+		sum += float32(score) / float32(len(truth.rank_truth[i]))
+	}
+	return float32(sum) / float32(len(truth.rank_truth))
 }
