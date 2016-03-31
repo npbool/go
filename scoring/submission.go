@@ -94,7 +94,7 @@ func (sub *Submission) Open() (io.ReadCloser, error) {
 	}
 }
 
-func (submission *Submission) ReadData(evaluation int) (Prediction, error) {
+func (submission *Submission) ReadData(evaluation string) (Prediction, error) {
 	rc, err := submission.Open()
 	if err != nil {
 		return Prediction{}, err
@@ -103,7 +103,7 @@ func (submission *Submission) ReadData(evaluation int) (Prediction, error) {
 	csvReader := csv.NewReader(rc)
 
 	msg := ""
-	if evaluation == 2 {
+	if evaluation == "AUC" || evaluation == "F_score" || evaluation == "Recall" || evaluation == "Precision" {
 		res.classification_prediction = make(map[string]float32)
 		
 		for {
@@ -131,7 +131,7 @@ func (submission *Submission) ReadData(evaluation int) (Prediction, error) {
 			}
 			res.classification_prediction[key] = float32(pred)
 		}
-	} else if evaluation == 1 {
+	} else if evaluation == "NDCG" || evaluation == "MAP" {
 		res.rank_prediction = make([]rank, 0)
 
 		for {

@@ -82,15 +82,13 @@ func calculatePara(truth Truth, pred Prediction) (int, int, int, int) {
 		if ins[i].label == 1 {
 			if ins[i].score == 1 {
 				tp++
-			}
-			if ins[i].score == 0 {
+			} else {
 				fn++
 			}
 		} else {
 			if ins[i].score == 1 {
 				fp++
-			}
-			if ins[i].score == 0 {
+			} else {
 				tn++
 			}
 		}

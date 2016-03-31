@@ -26,7 +26,7 @@ type Truth struct {
 type Competition struct {
 	Public, Private Truth
 	NumLine         int
-	evaluation		int
+	evaluation		string
 }
 
 type Result struct {
@@ -65,7 +65,7 @@ func (daemon *Daemon) connRedis() {
 	}
 }
 
-func readTruth(path string, evaluation int) Truth {
+func readTruth(path, evaluation string) Truth {
 	file, err := os.Open(path)
 	if err != nil {
 		log.Fatal(err)
@@ -74,12 +74,11 @@ func readTruth(path string, evaluation int) Truth {
 	reader := csv.NewReader(file)
 	
 
-	if evaluation == 2 {
+	if evaluation == "AUC" || evaluation == "F_score" || evaluation == "Recall" || evaluation == "Precision" {
 		res.classification_truth = make(map[string]int)
 
 		for {
 			record, err := reader.Read()
-
 			if err == io.EOF {
 				break
 			}
@@ -94,12 +93,11 @@ func readTruth(path string, evaluation int) Truth {
 				log.Fatal(err)
 			}
 		}
-	} else if evaluation == 1 {
+	} else if evaluation == "NDCG" || evaluation == "MAP" {
 		res.rank_truth = make([]rank, 0)
 
 		for {
 			record, err := reader.Read()
-
 			if err == io.EOF {
 				break
 			}
@@ -112,6 +110,7 @@ func readTruth(path string, evaluation int) Truth {
 				num, _ := strconv.Atoi(record[j])
 				line = append(line, num)
 			}
+
 			res.rank_truth = append(res.rank_truth, line)
 		}
 	} else {
@@ -135,7 +134,7 @@ func (daemon *Daemon) loadCompetitionData() {
 		var compID int
 		var publicPath, privatePath string
 		var numLine int
-		var evaluation int
+		var evaluation string
 		if err := rows.Scan(&compID, &publicPath, &privatePath, &numLine, &evaluation); err != nil {
 			log.Fatal(err)
 		}
@@ -196,8 +195,22 @@ func Start(configFilename string) {
 	daemon.Run()
 }
 
-func evaluate(truth Truth, predication Prediction) float32 {
-	return NDCG(truth, predication)
+func evaluate(truth Truth, predication Prediction, evaluation_method string) float32 {
+	if evaluation_method == "AUC" {
+		return AUC(truth, predication)
+	} else if evaluation_method == "Recall" {
+		return Recall(truth, predication)
+	} else if evaluation_method == "Precision" {
+		return Precision(truth, predication)
+	} else if evaluation_method == "MAP" {
+		return MAP(truth, predication)
+	} else if evaluation_method == "NDCG" {
+		return NDCG(truth, predication)
+	} else {
+		fmt.Println("evaluation method doesn't exist")
+		os.Exit(3)
+	}
+	return 0
 }
 
 func (daemon *Daemon) writeMsg(submissionPk int, msg string) {
@@ -235,21 +248,18 @@ func (daemon *Daemon) work(queue chan Submission) {
 			continue
 		}
 
-		if evaluation_method == 2 {
-			if len(predication.classification_prediction) != daemon.competitionTruths[submission.CompetitionPk].NumLine {
-				fmt.Println("Line number doesn't match")
-				daemon.writeMsg(submission.Pk, "Line number doesn't match")
-			}
+		line_num := len(predication.classification_prediction)
+		if evaluation_method == "NDCG" || evaluation_method == "MAP" {
+			line_num = len(predication.rank_prediction)
 		}
-		if evaluation_method == 1 {
-			if len(predication.rank_prediction) != daemon.competitionTruths[submission.CompetitionPk].NumLine {
-				fmt.Println("Line number doesn't match")
-				daemon.writeMsg(submission.Pk, "Line number doesn't match")
-			}
-		}	
+		if line_num != daemon.competitionTruths[submission.CompetitionPk].NumLine {
+			fmt.Println("Line number doesn't match")
+			daemon.writeMsg(submission.Pk, "Line number doesn't match")
+		}
+
 		var publicScore, privateScore float32
-		publicScore = evaluate(daemon.competitionTruths[submission.CompetitionPk].Public, predication)
-		privateScore = 1.0
+		publicScore = evaluate(daemon.competitionTruths[submission.CompetitionPk].Public, predication, evaluation_method)
+		privateScore = evaluate(daemon.competitionTruths[submission.CompetitionPk].Private, predication, evaluation_method)
 		fmt.Println(publicScore)
 		daemon.writeScore(submission.Pk, publicScore, privateScore)
 	}

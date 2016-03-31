@@ -4,8 +4,8 @@ import (
 	"testing"
 )
 
-func Test_AUC(t *testing.T) {
-	truth := map[string]int {
+func Test_AUC_Recall_Precision_F(t *testing.T) {
+	truth_cla := map[string]int {
 		"8":  0,
 		"17": 1,
 		"27": 1,
@@ -28,7 +28,7 @@ func Test_AUC(t *testing.T) {
 		"6":  0,
 	}
 
-	prediction := map[string]float32 {
+	prediction_cla := map[string]float32 {
 		"6":  1,
 		"7":  1,
 		"10": 0,
@@ -50,6 +50,12 @@ func Test_AUC(t *testing.T) {
 		"29": 1,
 		"35": 1,
 	}
+
+	truth := Truth{}
+	prediction := Prediction{}
+	truth.classification_truth = truth_cla
+	prediction.classification_prediction = prediction_cla
+
 	if AUC(truth, prediction) == 0.75 {
 		t.Log("AUC Correct")
 	} else {
@@ -69,5 +75,39 @@ func Test_AUC(t *testing.T) {
 		t.Log("F_score Correct")
 	} else {
 		t.Error("F_score Sucked")
+	}
+}
+
+func Test_MAP_NDCG(t *testing.T) {
+	truth := Truth{}
+	prediction := Prediction{}
+	
+	truth.rank_truth = []rank {
+		{1,2,3,4,5},
+		{1,2,3,4,5},
+	}
+	prediction.rank_prediction = []rank {
+		{6,4,7,1,2},
+		{1,1,1,1,1},
+	}
+
+	if MAP(truth, prediction) == 0.26 {
+		t.Log("MAP Correct")
+	} else {
+		t.Error("MAP Sucked")
+	}
+
+	truth.rank_truth = []rank {
+		{5,4,3,2,1,0},
+		{5,4,3,2,1,0},
+	}
+	prediction.rank_prediction = []rank {
+		{4,1,2,0,3,5},
+		{1,0,2,3,4,5},
+	}
+	if NDCG(truth, prediction) == 0.53729945 {
+		t.Log("NDCG Correct")
+	} else {
+		t.Error("NDCG Sucked")
 	}
 }
